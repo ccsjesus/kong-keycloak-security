@@ -1,0 +1,107 @@
+version: '3.7'
+services:
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak
+    environment:
+      DB_VENDOR: POSTGRES
+      DB_ADDR: postgres
+      DB_DATABASE: ${KEYCLOAK_DB_NAME}
+      DB_USER: ${KEYCLOAK_DB_USERNAME}
+      DB_SCHEMA: public
+      DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: Pa55w0rd
+      # Uncomment the line below if you want to specify JDBC parameters. The parameter below is just an example, and it shouldn't be used in production without knowledge. It is highly recommended that you read the PostgreSQL JDBC driver documentation in order to use it.
+      #JDBC_PARAMS: "ssl=true"
+    ports:
+      - 8081:8080
+    depends_on:
+      - postgres
+    networks:
+      - kong-net
+
+  postgres:
+    build: ./postgres/
+    container_name: postgres
+    environment:
+      POSTGRES_USERS: ${KONG_DB_USERNAME}:${KONG_DB_PASSWORD}|${KONGA_DB_USERNAME}:${KONGA_DB_PASSWORD}|${KEYCLOAK_DB_USERNAME}:${KEYCLOAK_DB_PASSWORD}
+      POSTGRES_DATABASES: ${KONG_DB_NAME}:${KONG_DB_USERNAME}|${KONGA_DB_NAME}:${KONGA_DB_USERNAME}|${KEYCLOAK_DB_NAME}:${KEYCLOAK_DB_USERNAME}
+    ports:
+      - 5432:5432
+    volumes:
+      - persist_volume:/var/lib/postgresql/data
+    networks:
+      - kong-net
+
+  kong-migrations:
+    image: kong:latest
+    container_name: kong-migrations
+    entrypoint: sh -c "sleep 10 && kong migrations bootstrap -v"
+    environment:
+      KONG_DATABASE: ${KONG_DATABASE}
+      KONG_PG_HOST: ${KONG_DB_HOST}
+      KONG_PG_DATABASE: ${KONG_DB_NAME}
+      KONG_PG_USER: ${KONG_DB_USERNAME}
+      KONG_PG_PASSWORD: ${KONG_DB_PASSWORD}
+    depends_on:
+      - postgres
+    networks:
+      - kong-net
+    restart: on-failure
+
+  kong:
+    image: kong:latest
+    container_name: kong
+    environment:
+      KONG_DATABASE: ${KONG_DATABASE}
+      KONG_PG_HOST: ${KONG_DB_HOST}
+      KONG_PG_DATABASE: ${KONG_DB_NAME}
+      KONG_PG_USER: ${KONG_DB_USERNAME}
+      KONG_PG_PASSWORD: ${KONG_DB_PASSWORD}
+      KONG_PROXY_ACCESS_LOG: ${KONG_PROXY_ACCESS_LOG}
+      KONG_ADMIN_ACCESS_LOG: ${KONG_ADMIN_ACCESS_LOG}
+      KONG_PROXY_ERROR_LOG: ${KONG_PROXY_ERROR_LOG}
+      KONG_ADMIN_ERROR_LOG: ${KONG_ADMIN_ERROR_LOG}
+      KONG_ADMIN_LISTEN: ${KONG_ADMIN_LISTEN}
+    restart: on-failure
+    ports:
+      - 8000:8000
+      - 8443:8443
+      - 8001:8001
+      - 8444:8444
+    networks:
+      - kong-net
+    depends_on:
+      - kong-migrations
+      - postgres
+
+  konga:
+    image: pantsel/konga
+    container_name: konga
+    environment:
+      TOKEN_SECRET: ${KONGA_TOKEN_SECRET}
+      DB_ADAPTER: ${KONG_DATABASE}
+      DB_HOST: ${KONGA_DB_HOST}
+      DB_PORT: ${KONGA_DB_PORT}
+      DB_DATABASE: ${KONGA_DB_NAME}
+      DB_USER: ${KONGA_DB_USERNAME}
+      DB_PASSWORD: ${KONGA_DB_PASSWORD}
+      NODE_ENV: ${KONGA_ENV}
+      KONGA_HOOK_TIMEOUT: 120000
+    restart: on-failure
+    ports:
+      - 1337:1337
+    depends_on:
+      - postgres
+      - kong
+    networks:
+      - kong-net
+
+volumes:
+  persist_volume:
+
+networks:
+  kong-net:
+    external: true

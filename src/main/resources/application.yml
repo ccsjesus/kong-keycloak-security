@@ -1,0 +1,11 @@
+server:
+  port: 8000
+keycloak:
+  realm: <REALM_NAME>
+  auth-server-url: <KEYCLOAK_SERVER_URL>/auth
+  ssl-required: external
+  resource: <CLIENT_ID>
+  credentials:
+    secret: <CLIENT_SECRET>
+  use-resource-role-mappings: true
+  bearer-only: true
